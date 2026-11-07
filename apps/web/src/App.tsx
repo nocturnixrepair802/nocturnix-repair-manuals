@@ -116,8 +116,8 @@ function Library() {
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand">
-          <div className="brand-icon"><BookOpen size={28} /></div>
-          <div><strong>NOCTURNIX</strong><span>REPAIR MANUALS</span></div>
+          <img className="brand-logo" src={`${import.meta.env.BASE_URL}pwa-icon-192.png`} alt="" />
+          <div><strong>NOCTURNIX</strong><span>MANUALS</span></div>
         </div>
         <nav className="navigation library-sections" aria-label="Library sections">
           <button type="button" aria-pressed={librarySection === 'Repair Manuals'} onClick={() => {

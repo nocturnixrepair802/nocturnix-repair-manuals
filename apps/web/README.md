@@ -1,4 +1,4 @@
-# Nocturnix Repair Manuals
+# Nocturnix Manuals
 
 Personal browser-based repair manual library built with React, TypeScript, and
 Vite. The library stores manuals in browser IndexedDB.

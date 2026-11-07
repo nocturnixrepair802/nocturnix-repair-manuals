@@ -35,11 +35,11 @@ button { cursor: pointer; }
   margin-bottom: 48px;
 }
 
-.brand-icon {
-  background: #00b4e7;
-  color: #081630;
-  padding: 12px;
+.brand-logo {
+  width: 52px;
+  height: 52px;
   border-radius: 12px;
+  flex: 0 0 auto;
 }
 
 .brand strong { display: block; letter-spacing: 2px; }

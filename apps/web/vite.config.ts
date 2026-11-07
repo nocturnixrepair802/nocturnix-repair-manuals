@@ -10,10 +10,10 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg', 'pwa-icon-192.png', 'pwa-icon-512.png'],
+      includeAssets: ['pwa-icon-192.png', 'pwa-icon-512.png'],
       manifest: {
-        name: 'Nocturnix Repair Manuals',
-        short_name: 'NMR Manuals',
+        name: 'Nocturnix Manuals',
+        short_name: 'Nocturnix Manuals',
         description: 'Your personal offline repair manual library.',
         theme_color: '#081630',
         background_color: '#081630',
