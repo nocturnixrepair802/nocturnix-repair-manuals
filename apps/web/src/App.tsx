@@ -1,600 +1,237 @@
-
-import { useEffect, useMemo, useRef, useState } from 'react'
-import type { ChangeEvent } from 'react'
-
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { liveQuery } from 'dexie'
+import { BookOpen, FileText, FolderOpen, Search, Smartphone, Tablet, Watch, Upload } from 'lucide-react'
 import {
-  BookOpen,
-  FileText,
-  FolderOpen,
-  Search,
-  Smartphone,
-  Tablet,
-  Watch,
-  Upload,
-} from 'lucide-react'
-
-import {
-  db,
-  type StoredManual,
-  type DeviceType,
-  type Manufacturer,
+  db, DEVICE_TYPES, MANUFACTURERS, DOCUMENT_CATEGORIES,
+  type StoredManual, type ManualMetadata,
 } from './database/manualDatabase'
-
+import { deleteManual, editManual, findLegacyDuplicates, importManual, prepareLibrary } from './database/manualLibrary'
+import { createLegacyBackup, downloadBackup, hasLegacyLibrary } from './database/libraryBackup'
+import { ManualCard } from './components/ManualCard'
+import { ManualForm } from './components/ManualForm'
+import { Modal } from './components/Modal'
+import { PdfReader } from './components/PdfReader'
+import { Recovery } from './components/Recovery'
 import './App.css'
 
-// ============================================================
-// PDF READER
-// ============================================================
-
-function PdfReader({
-  manual,
-  onClose,
-}: {
-  manual: StoredManual
-  onClose: () => void
-}) {
-  const iframeRef = useRef<HTMLIFrameElement>(null)
-
-  useEffect(() => {
-    const iframe = iframeRef.current
-    const url = URL.createObjectURL(manual.file)
-
-    if (iframe) {
-      iframe.src = url
-    }
-
-    return () => {
-      if (iframe) {
-        iframe.removeAttribute('src')
-      }
-
-      URL.revokeObjectURL(url)
-    }
-  }, [manual.file])
-
-  return (
-    <div
-      className="reader-overlay"
-      role="dialog"
-      aria-modal="true"
-      aria-label={`PDF reader: ${manual.title}`}
-    >
-      <div className="reader-header">
-        <strong>{manual.title}</strong>
-
-        <button type="button" onClick={onClose}>
-          Close Reader
-        </button>
-      </div>
-
-      <iframe
-        ref={iframeRef}
-        title={manual.title}
-      />
-    </div>
-  )
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : 'The operation could not be completed.'
 }
 
-// ============================================================
-// MAIN APPLICATION
-// ============================================================
-
-function App() {
-  // ----------------------------------------------------------
-  // APPLICATION STATE
-  // ----------------------------------------------------------
-
+function Library() {
   const [manuals, setManuals] = useState<StoredManual[]>([])
-
+  const [stage, setStage] = useState<'checking' | 'backup' | 'loading' | 'ready' | 'error'>('checking')
+  const [progress, setProgress] = useState('')
+  const [error, setError] = useState('')
   const [search, setSearch] = useState('')
   const [manufacturer, setManufacturer] = useState('All')
   const [deviceType, setDeviceType] = useState('All')
+  const [category, setCategory] = useState('All')
+  const [selectedManual, setSelectedManual] = useState<StoredManual | null>(null)
+  const [editing, setEditing] = useState<StoredManual | null>(null)
+  const [deleting, setDeleting] = useState<StoredManual | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [backupDownloaded, setBackupDownloaded] = useState(false)
+  const [backupConfirmed, setBackupConfirmed] = useState(false)
+  const [queue, setQueue] = useState<File[]>([])
+  const [results, setResults] = useState<string[]>([])
 
-  const [selectedManual, setSelectedManual] =
-    useState<StoredManual | null>(null)
-
-  const [loading, setLoading] = useState(true)
-  const [importing, setImporting] = useState(false)
-  const [importError, setImportError] = useState('')
-
-  // ----------------------------------------------------------
-  // LOAD SAVED MANUALS FROM INDEXEDDB
-  // ----------------------------------------------------------
-
-  useEffect(() => {
-    let active = true
-
-    async function loadManuals() {
-      try {
-        const records = await db.manuals.toArray()
-
-        if (active) {
-          setManuals(records)
-        }
-      } catch (error) {
-        console.error(
-          'Unable to load saved manuals:',
-          error,
-        )
-
-        if (active) {
-          setImportError(
-            'Unable to load the saved manual library.',
-          )
-        }
-      } finally {
-        if (active) {
-          setLoading(false)
-        }
-      }
-    }
-
-    void loadManuals()
-
-    return () => {
-      active = false
+  const initialize = useCallback(async () => {
+    setStage('loading')
+    setError('')
+    try {
+      await prepareLibrary(db, (done, total) => setProgress(`Checking saved PDFs: ${done} of ${total}`))
+      setStage('ready')
+    } catch (cause) {
+      setError(`Unable to prepare the library. ${errorMessage(cause)}`)
+      setStage('error')
     }
   }, [])
 
-  // ----------------------------------------------------------
-  // SEARCH AND FILTER MANUALS
-  // ----------------------------------------------------------
+  useEffect(() => {
+    let active = true
+    void hasLegacyLibrary().then(async (legacy) => {
+      if (!active) return
+      if (legacy) setStage('backup')
+      else await initialize()
+    }).catch((cause: unknown) => {
+      if (active) { setError(errorMessage(cause)); setStage('error') }
+    })
+    return () => { active = false }
+  }, [initialize])
+
+  useEffect(() => {
+    if (stage !== 'ready') return
+    const subscription = liveQuery(() => db.manuals.toArray()).subscribe({
+      next: setManuals,
+      error: (cause: unknown) => { setError(errorMessage(cause)); setStage('error') },
+    })
+    return () => subscription.unsubscribe()
+  }, [stage])
 
   const filteredManuals = useMemo(() => {
     const query = search.trim().toLowerCase()
-
     return manuals.filter((manual) => {
-      const matchesSearch =
-        manual.title.toLowerCase().includes(query) ||
-        manual.fileName.toLowerCase().includes(query) ||
-        manual.manufacturer.toLowerCase().includes(query)
+      const fields = [manual.title, manual.fileName, manual.manufacturer, manual.manualId,
+        manual.deviceModel, manual.deviceModelId, manual.documentCategory]
+      return fields.some((field) => (field ?? '').toLowerCase().includes(query)) &&
+        (manufacturer === 'All' || manual.manufacturer === manufacturer) &&
+        (deviceType === 'All' || manual.deviceType === deviceType) &&
+        (category === 'All' || manual.documentCategory === category)
+    }).sort((a, b) => a.manualId.localeCompare(b.manualId, undefined, { numeric: true }))
+  }, [manuals, search, manufacturer, deviceType, category])
 
-      const matchesManufacturer =
-        manufacturer === 'All' ||
-        manual.manufacturer === manufacturer
+  const duplicateGroups = useMemo(() => findLegacyDuplicates(manuals), [manuals])
+  const currentFile = queue[0]
+  const importDefaults: ManualMetadata | null = currentFile ? {
+    title: currentFile.name.replace(/\.pdf$/i, '').slice(0, 200) || 'Untitled manual',
+    manufacturer: MANUFACTURERS.find((value) => value === manufacturer) ?? 'Unassigned',
+    deviceType: DEVICE_TYPES.find((value) => value === deviceType) ?? 'Phone',
+    deviceModel: '', deviceModelId: '',
+    documentCategory: DOCUMENT_CATEGORIES.find((value) => value === category) ?? 'Unassigned',
+  } : null
 
-      const matchesDeviceType =
-        deviceType === 'All' ||
-        manual.deviceType === deviceType
-
-      return (
-        matchesSearch &&
-        matchesManufacturer &&
-        matchesDeviceType
-      )
-    })
-  }, [manuals, search, manufacturer, deviceType])
-
-  // ----------------------------------------------------------
-  // LIBRARY STATISTICS
-  // ----------------------------------------------------------
-
-  const totalManuals = manuals.length
-
-  const phoneManuals = manuals.filter(
-    (manual) => manual.deviceType === 'Phone',
-  ).length
-
-  const tabletManuals = manuals.filter(
-    (manual) => manual.deviceType === 'Tablet',
-  ).length
-
-  const watchManuals = manuals.filter(
-    (manual) => manual.deviceType === 'Watch',
-  ).length
-
-  // ----------------------------------------------------------
-  // IMPORT PDF MANUALS
-  // ----------------------------------------------------------
-
-  async function importManuals(
-    event: ChangeEvent<HTMLInputElement>,
-  ) {
-    const files = Array.from(event.target.files ?? [])
-
-    event.target.value = ''
-    setImportError('')
-
-    if (files.length === 0) {
-      return
-    }
-
-    const pdfFiles = files.filter(
-      (file) =>
-        file.type === 'application/pdf' ||
-        file.name.toLowerCase().endsWith('.pdf'),
-    )
-
-    const skippedFiles =
-      pdfFiles.length !== files.length
-
-    if (pdfFiles.length === 0) {
-      setImportError(
-        'Only PDF files can be imported.',
-      )
-      return
-    }
-
-    // Until the metadata editor is implemented,
-    // use the active filters as import defaults.
-
-    const selectedManufacturer: Manufacturer =
-      manufacturer === 'Apple' ||
-      manufacturer === 'Samsung'
-        ? manufacturer
-        : 'Unassigned'
-
-    const selectedDeviceType: DeviceType =
-      deviceType === 'Tablet' ||
-      deviceType === 'Watch'
-        ? deviceType
-        : 'Phone'
-
-    const newManuals: StoredManual[] = pdfFiles.map(
-      (file) => ({
-        id: crypto.randomUUID(),
-        title: file.name.replace(/\.pdf$/i, ''),
-        manufacturer: selectedManufacturer,
-        deviceType: selectedDeviceType,
-        file,
-        fileName: file.name,
-        fileSize: file.size,
-        importedAt: new Date().toISOString(),
-      }),
-    )
-
-    setImporting(true)
-
-    try {
-      await db.manuals.bulkAdd(newManuals)
-
-      const savedManuals =
-        await db.manuals.toArray()
-
-      setManuals(savedManuals)
-
-      if (skippedFiles) {
-        setImportError(
-          'PDFs were imported, but unsupported files were skipped.',
-        )
-      }
-    } catch (error) {
-      console.error(
-        'Unable to import PDFs:',
-        error,
-      )
-
-      setImportError(
-        'Unable to save one or more PDFs. Check available browser storage.',
-      )
-
-      try {
-        const savedManuals =
-          await db.manuals.toArray()
-
-        setManuals(savedManuals)
-      } catch (reloadError) {
-        console.error(
-          'Unable to reload saved manuals:',
-          reloadError,
-        )
-      }
-    } finally {
-      setImporting(false)
-    }
+  function skipImport() {
+    setResults((previous) => [...previous, `${currentFile.name}: skipped.`])
+    setQueue((previous) => previous.slice(1))
   }
-
-  // ----------------------------------------------------------
-  // PDF READER CONTROLS
-  // ----------------------------------------------------------
-
-  function openManual(manual: StoredManual) {
-    setSelectedManual(manual)
-  }
-
-  function closeReader() {
-    setSelectedManual(null)
-  }
-
-  // ----------------------------------------------------------
-  // APPLICATION INTERFACE
-  // ----------------------------------------------------------
 
   return (
     <div className="app-shell">
-      {/* SIDEBAR */}
-
       <aside className="sidebar">
         <div className="brand">
-          <div className="brand-icon">
-            <BookOpen size={28} />
-          </div>
-
-          <div>
-            <strong>NOCTURNIX</strong>
-            <span>REPAIR MANUALS</span>
-          </div>
+          <div className="brand-icon"><BookOpen size={28} /></div>
+          <div><strong>NOCTURNIX</strong><span>REPAIR MANUALS</span></div>
         </div>
-
-        <nav
-          className="navigation"
-          aria-label="Manual categories"
-        >
-          <button
-            type="button"
-            onClick={() => setDeviceType('All')}
-          >
-            <FolderOpen size={19} />
-            All Manuals
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setDeviceType('Phone')}
-          >
-            <Smartphone size={19} />
-            Phones
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setDeviceType('Tablet')}
-          >
-            <Tablet size={19} />
-            Tablets
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setDeviceType('Watch')}
-          >
-            <Watch size={19} />
-            Watches
-          </button>
+        <nav className="navigation" aria-label="Manual categories">
+          {[
+            { value: 'All', label: 'All Manuals', Icon: FolderOpen },
+            { value: 'Phone', label: 'Phones', Icon: Smartphone },
+            { value: 'Tablet', label: 'Tablets', Icon: Tablet },
+            { value: 'Watch', label: 'Watches', Icon: Watch },
+          ].map(({ value, label, Icon }) => (
+            <button key={value} type="button" aria-pressed={deviceType === value} onClick={() => setDeviceType(value)}>
+              <Icon size={19} />{label}
+            </button>
+          ))}
         </nav>
-
-        <div className="sidebar-footer">
-          NMR Technical Library
-          <span>Development Version 0.2</span>
-        </div>
+        <div className="sidebar-footer">NMR Technical Library<span>Development Version 0.3</span></div>
       </aside>
-
-      {/* MAIN CONTENT */}
-
       <main className="main-content">
-        {/* PAGE HEADER */}
-
         <header className="page-header">
           <div>
-            <p className="eyebrow">
-              TECHNICAL REFERENCE LIBRARY
-            </p>
-
+            <p className="eyebrow">TECHNICAL REFERENCE LIBRARY</p>
             <h1>Repair Manuals</h1>
-
-            <p>
-              Search, organize, and view your repair
-              documentation.
-            </p>
+            <p>Search, organize, and view your repair documentation.</p>
           </div>
-
-          <label className="upload-button">
-            <Upload size={18} />
-
-            {importing
-              ? 'Importing...'
-              : 'Import PDF'}
-
-            <input
-              type="file"
-              accept=".pdf,application/pdf"
-              multiple
-              hidden
-              disabled={importing || loading}
+          <label className={`upload-button ${stage !== 'ready' || queue.length ? 'disabled' : ''}`}>
+            <Upload size={18} />Import PDF
+            <input aria-label="Import PDF" type="file" accept=".pdf,application/pdf" multiple hidden
+              disabled={stage !== 'ready' || queue.length > 0}
               onChange={(event) => {
-                void importManuals(event)
-              }}
-            />
+                const files = Array.from(event.target.files ?? [])
+                event.target.value = ''
+                if (files.length) { setResults([]); setQueue(files); setError('') }
+              }} />
           </label>
         </header>
-
-        {/* LIBRARY STATISTICS */}
-
-        <section
-          className="stats"
-          aria-label="Library statistics"
-        >
-          <div className="stat-card">
-            <FileText />
-
-            <div>
-              <strong>{totalManuals}</strong>
-              <span>Total Manuals</span>
-            </div>
-          </div>
-
-          <div className="stat-card">
-            <Smartphone />
-
-            <div>
-              <strong>{phoneManuals}</strong>
-              <span>Phone Manuals</span>
-            </div>
-          </div>
-
-          <div className="stat-card">
-            <Tablet />
-
-            <div>
-              <strong>{tabletManuals}</strong>
-              <span>Tablet Manuals</span>
-            </div>
-          </div>
-
-          <div className="stat-card">
-            <Watch />
-
-            <div>
-              <strong>{watchManuals}</strong>
-              <span>Watch Manuals</span>
-            </div>
-          </div>
+        <section className="stats" aria-label="Library statistics">
+          {[
+            { label: 'Total Manuals', count: manuals.length, Icon: FileText },
+            { label: 'Phone Manuals', count: manuals.filter((manual) => manual.deviceType === 'Phone').length, Icon: Smartphone },
+            { label: 'Tablet Manuals', count: manuals.filter((manual) => manual.deviceType === 'Tablet').length, Icon: Tablet },
+            { label: 'Watch Manuals', count: manuals.filter((manual) => manual.deviceType === 'Watch').length, Icon: Watch },
+          ].map(({ label, count, Icon }) => (
+            <div className="stat-card" key={label}><Icon /><div><strong>{count}</strong><span>{label}</span></div></div>
+          ))}
         </section>
-
-        {/* MANUAL LIBRARY */}
-
+        {stage === 'backup' && (
+          <section className="library-panel upgrade-panel" aria-label="Upgrade library">
+            <h2>Back up your library before upgrading</h2>
+            <p>Your existing manuals will be preserved. Close other library tabs, download the backup, and confirm that it is saved before upgrading to v0.3.</p>
+            <p>This backup contains your PDF files. Keep it in a private location outside the repository.</p>
+            <button disabled={busy} onClick={() => {
+              setBusy(true); setError('')
+              void createLegacyBackup().then((blob) => {
+                downloadBackup(blob); setBackupDownloaded(true)
+              }).catch((cause: unknown) => setError(errorMessage(cause))).finally(() => setBusy(false))
+            }}>{busy ? 'Verifying backup…' : 'Download v1 backup'}</button>
+            <label className="backup-confirm"><input type="checkbox" disabled={!backupDownloaded || busy} checked={backupConfirmed} onChange={(event) => setBackupConfirmed(event.target.checked)} />I saved the backup in a private location.</label>
+            <button className="primary" disabled={!backupConfirmed || busy} onClick={() => { void initialize() }}>Upgrade library</button>
+          </section>
+        )}
         <section className="library-panel">
-          {/* SEARCH AND FILTERS */}
-
           <div className="library-toolbar">
-            <div className="search-box">
-              <Search size={18} />
-
-              <input
-                type="search"
-                placeholder="Search repair manuals..."
-                aria-label="Search repair manuals"
-                value={search}
-                onChange={(event) =>
-                  setSearch(event.target.value)
-                }
-              />
-            </div>
-
-            <select
-              aria-label="Filter by manufacturer"
-              value={manufacturer}
-              onChange={(event) =>
-                setManufacturer(event.target.value)
-              }
-            >
-              <option value="All">
-                All Manufacturers
-              </option>
-
-              <option value="Apple">
-                Apple
-              </option>
-
-              <option value="Samsung">
-                Samsung
-              </option>
-
-              <option value="Unassigned">
-                Unassigned
-              </option>
+            <div className="search-box"><Search size={18} /><input type="search" placeholder="Search repair manuals..." aria-label="Search repair manuals" value={search} onChange={(event) => setSearch(event.target.value)} /></div>
+            <select aria-label="Filter by manufacturer" value={manufacturer} onChange={(event) => setManufacturer(event.target.value)}>
+              <option value="All">All Manufacturers</option>{MANUFACTURERS.map((value) => <option key={value}>{value}</option>)}
             </select>
-
-            <select
-              aria-label="Filter by device type"
-              value={deviceType}
-              onChange={(event) =>
-                setDeviceType(event.target.value)
-              }
-            >
-              <option value="All">
-                All Device Types
-              </option>
-
-              <option value="Phone">
-                Phones
-              </option>
-
-              <option value="Tablet">
-                Tablets
-              </option>
-
-              <option value="Watch">
-                Watches
-              </option>
+            <select aria-label="Filter by device type" value={deviceType} onChange={(event) => setDeviceType(event.target.value)}>
+              <option value="All">All Device Types</option>{DEVICE_TYPES.map((value) => <option key={value}>{value}</option>)}
+            </select>
+            <select aria-label="Filter by document category" value={category} onChange={(event) => setCategory(event.target.value)}>
+              <option value="All">All Document Categories</option>{DOCUMENT_CATEGORIES.map((value) => <option key={value}>{value}</option>)}
             </select>
           </div>
-
-          {/* IMPORT ERROR */}
-
-          {importError && (
-            <p
-              role="alert"
-              style={{ color: '#ffb4b4' }}
-            >
-              {importError}
-            </p>
+          {error && <p role="alert" className="error">{error}</p>}
+          {stage === 'error' && <button onClick={() => window.location.reload()}>Retry library setup</button>}
+          {results.length > 0 && <div role="status" className="import-results"><strong>Import results</strong><ul>{results.map((result, index) => <li key={index}>{result}</li>)}</ul></div>}
+          {stage === 'ready' && duplicateGroups.length > 0 && (
+            <details className="duplicate-notice">
+              <summary>{duplicateGroups.length} duplicate PDF {duplicateGroups.length === 1 ? 'group' : 'groups'} preserved from the existing library</summary>
+              <ul>{duplicateGroups.map((group) => <li key={group[0].fileHash}>{group.map((manual) => `${manual.manualId}: ${manual.title}`).join(' · ')}</li>)}</ul>
+              <p>Review the entries and use Delete only for copies you choose to remove.</p>
+            </details>
           )}
-
-          {/* LOADING STATE */}
-
-          {loading && (
-            <div className="empty-state">
-              <BookOpen size={40} />
-
-              <h2>Loading library...</h2>
-
-              <p>
-                Retrieving saved repair manuals.
-              </p>
-            </div>
-          )}
-
-          {/* EMPTY LIBRARY */}
-
-          {!loading &&
-            filteredManuals.length === 0 && (
-              <div className="empty-state">
-                <BookOpen size={48} />
-
-                <h2>No manuals found</h2>
-
-                <p>
-                  {manuals.length === 0
-                    ? 'Import your first PDF repair manual to begin building the library.'
-                    : 'No manuals match your current search or filters.'}
-                </p>
-              </div>
-            )}
-
-          {/* MANUAL CARDS */}
-
-          {!loading &&
-            filteredManuals.length > 0 && (
-              <div className="manual-grid">
-                {filteredManuals.map((manual) => (
-                  <button
-                    type="button"
-                    className="manual-card"
-                    key={manual.id}
-                    onClick={() =>
-                      openManual(manual)
-                    }
-                  >
-                    <FileText size={30} />
-
-                    <strong>
-                      {manual.title}
-                    </strong>
-
-                    <span>
-                      {manual.manufacturer}
-                      {' · '}
-                      {manual.deviceType}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            )}
+          {(stage === 'checking' || stage === 'loading') && <div className="empty-state" role="status"><BookOpen size={40} /><h2>Preparing library…</h2><p>{progress || 'Checking saved repair manuals.'}</p></div>}
+          {stage === 'ready' && filteredManuals.length === 0 && <div className="empty-state"><BookOpen size={48} /><h2>No manuals found</h2><p>{manuals.length === 0 ? 'Import your first PDF repair manual to begin building the library.' : 'No manuals match your current search or filters.'}</p></div>}
+          {stage === 'ready' && filteredManuals.length > 0 && <div className="manual-grid">
+            {filteredManuals.map((manual) => <ManualCard key={manual.id} manual={manual} onOpen={() => setSelectedManual(manual)} onEdit={() => setEditing(manual)} onDelete={() => { setError(''); setDeleting(manual) }} />)}
+          </div>}
         </section>
       </main>
-
-      {/* PDF READER OVERLAY */}
-
-      {selectedManual && (
-        <PdfReader
-          key={selectedManual.id}
-          manual={selectedManual}
-          onClose={closeReader}
-        />
-      )}
+      {selectedManual && <PdfReader manual={selectedManual} onClose={() => setSelectedManual(null)} />}
+      {editing && <Modal title={`Edit ${editing.manualId}`} onClose={() => { if (!busy) setEditing(null) }} busy={busy}>
+        <p>{editing.fileName} · {editing.fileSize.toLocaleString()} bytes</p>
+        <ManualForm initial={editing} onCancel={() => setEditing(null)} onSave={async (metadata) => {
+          setBusy(true)
+          try { await editManual(editing.id, metadata); setEditing(null) }
+          finally { setBusy(false) }
+        }} />
+      </Modal>}
+      {currentFile && importDefaults && <Modal title="Import manual" busy={busy} onClose={() => { if (!busy) skipImport() }}>
+        <ManualForm key={currentFile.name + ':' + queue.length} initial={importDefaults} submitLabel="Import manual" onCancel={skipImport} onSave={async (metadata) => {
+          setBusy(true)
+          try {
+            const result = await importManual(currentFile, metadata)
+            setResults((previous) => [...previous, result.status === 'duplicate'
+              ? `${currentFile.name}: duplicate of ${result.manual.manualId} (${result.manual.title}); skipped.`
+              : `${currentFile.name}: imported as ${result.manual.manualId}.`])
+            setQueue((previous) => previous.slice(1))
+          } catch (cause) {
+            setResults((previous) => [...previous, `${currentFile.name}: failed — ${errorMessage(cause)}`])
+            throw cause
+          } finally { setBusy(false) }
+        }}><p>{currentFile.name} · {queue.length} {queue.length === 1 ? 'file' : 'files'} remaining. Cancel skips this file.</p></ManualForm>
+      </Modal>}
+      {deleting && <Modal title="Delete manual?" onClose={() => { if (!busy) setDeleting(null) }} busy={busy}>
+        <p>Delete {deleting.manualId}: <strong>{deleting.title}</strong> and its PDF from this library? This cannot be undone.</p>
+        {error && <p role="alert" className="error">{error}</p>}
+        <div className="dialog-actions">
+          <button disabled={busy} onClick={() => setDeleting(null)}>Cancel</button>
+          <button className="danger" disabled={busy} onClick={() => {
+            setBusy(true); setError('')
+            void deleteManual(deleting.id).then(() => {
+              if (selectedManual?.id === deleting.id) setSelectedManual(null)
+              setDeleting(null)
+            }).catch((cause: unknown) => setError(errorMessage(cause))).finally(() => setBusy(false))
+          }}>{busy ? 'Deleting…' : 'Delete permanently'}</button>
+        </div>
+      </Modal>}
     </div>
   )
 }
 
-export default App
+export default function App() {
+  return window.location.pathname === '/recovery' ? <Recovery /> : <Library />
+}

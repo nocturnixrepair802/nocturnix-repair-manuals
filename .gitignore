@@ -208,3 +208,8 @@ Desktop.ini
 
 # Historical application backups
 apps/web/src/App.v0.1.backup.txt
+
+# Browser test output (synthetic fixtures only)
+apps/web/test-results/
+apps/web/playwright-report/
+nocturnix-v1-backup-*.json

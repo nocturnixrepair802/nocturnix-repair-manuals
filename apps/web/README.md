@@ -1,75 +1,71 @@
-# React + TypeScript + Vite
+# Nocturnix Repair Manuals
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Personal browser-based repair manual library built with React, TypeScript, and
+Vite. The library stores manuals in browser IndexedDB.
 
-Currently, two official plugins are available:
+## Run locally
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-
+```powershell
+npm install
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://npmx.dev/package/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://npmx.dev/package/eslint-plugin-react-dom) for React-specific lint rules:
+The development server is for local use. To test the installable app, build and
+preview the production version:
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-
+```powershell
+npm run build
+npm run preview
 ```
+
+## Publish to GitHub Pages
+
+The workflow at `.github/workflows/deploy-pages.yml` builds and deploys this PWA
+when changes are pushed to `development/manual-library-v0.3`. In the repository
+on GitHub, set **Settings → Pages → Build and deployment → Source** to **GitHub
+Actions**. After a successful workflow run, the app is available at:
+
+`https://nocturnixrepair802.github.io/nocturnix-repair-manuals/`
+
+On a Galaxy phone, open the HTTPS address in Chrome and choose **Install app**
+from Chrome's menu. The PWA shell is cached for offline use. The library itself
+is local to each browser/device and does not sync. Use the app's backup and
+restore features to transfer a library between devices.
+
+Never commit repair PDFs, private library backups, or secrets to the repository.
+
+## Pull request checks and deployment troubleshooting
+
+Pull requests into `main` run lint, database/migration tests, and a production
+build. They do not publish a preview site. Pushes to
+`development/manual-library-v0.3` run the same checks and then deploy. A manual
+workflow run deploys only when that development branch is selected. Pull request
+checks and branch deployments have separate concurrency groups.
+
+If the build passes but deployment fails with `Failed to create deployment
+(status: 404)`, check repository Settings > Pages. Enable Pages and select
+**GitHub Actions** as its source, then rerun the failed deployment job. Creating
+a `github-pages` environment alone does not enable a Pages site. This is a
+hosting configuration failure; a pull request can still have no merge conflicts.
+The workflow checks Pages configuration before attempting deployment and does
+not enable or publish a new site automatically during pull request validation.
+
+The expected public app address is:
+`https://nocturnixrepair802.github.io/nocturnix-repair-manuals/`.
+Only the built application shell is uploaded. Do not include private PDFs,
+IndexedDB exports, or library backups in `public`, source control, or build output.
+
+Before pushing workflow changes, run these commands from `apps/web`:
+
+```powershell
+npm.cmd run lint
+npm.cmd test
+$env:VITE_BASE_PATH = '/nocturnix-repair-manuals/'
+npm.cmd run build
+Remove-Item Env:VITE_BASE_PATH
+```
+
+The workflow uses Node 24 actions and pins Ubuntu 24.04 to avoid an unrelated
+`ubuntu-latest` image migration while diagnosing deployment failures. A warning
+about an action's internal Node version is separate from the application's Node
+version selected by `setup-node`.
