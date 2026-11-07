@@ -1,4 +1,4 @@
-name: Deploy Nocturnix Repair Manuals
+name: Deploy Nocturnix Manuals
 
 on:
   push:
