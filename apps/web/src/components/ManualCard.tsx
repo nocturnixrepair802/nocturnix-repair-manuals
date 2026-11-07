@@ -13,9 +13,15 @@ export function ManualCard({ manual, onOpen, onEdit, onDelete }: {
         <FileText size={30} />
         <span className="manual-id">{manual.manualId}</span>
         <strong>{manual.title}</strong>
-        <span>{manual.manufacturer} · {manual.deviceType}</span>
-        <span>{manual.deviceModel || 'Model unassigned'}{manual.deviceModelId && ` (${manual.deviceModelId})`}</span>
-        <span>{manual.documentCategory}</span>
+        {manual.librarySection === 'Policies, Procedures, & Operations' ? (
+          <span>{manual.policySection}</span>
+        ) : (
+          <>
+            <span>{manual.manufacturer} · {manual.deviceType}</span>
+            <span>{manual.deviceModel || 'Model unassigned'}{manual.deviceModelId && ` (${manual.deviceModelId})`}</span>
+            <span>{manual.documentCategory}</span>
+          </>
+        )}
       </button>
       <div className="card-actions">
         <button type="button" onClick={onEdit} aria-label={`Edit ${manual.title}`}>Edit</button>

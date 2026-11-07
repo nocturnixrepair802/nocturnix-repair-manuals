@@ -99,6 +99,28 @@ test('dashboard, navigation, filtering, metadata search, reader, and reopening p
   await expect(reopened.getByRole('dialog').locator('iframe')).toHaveAttribute('src', /^blob:/)
 })
 
+test('policy library subsections stay separate and policy imports have no device fields', async ({ page }) => {
+  await page.goto('/')
+  await importPdf(page, 'repair-only')
+  await page.getByRole('button', { name: 'Policies, Procedures, & Operations', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'No policy documents found' })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Safety & Compliance' }).click()
+  await page.getByLabel('Import PDF', { exact: true }).setInputFiles(fixture('safety-policy'))
+  const dialog = page.getByRole('dialog', { name: 'Import manual', exact: true })
+  await dialog.getByLabel('Library section', { exact: true }).selectOption('Policies, Procedures, & Operations')
+  await dialog.getByLabel('Policy subsection', { exact: true }).selectOption('Safety & Compliance')
+  await dialog.getByRole('button', { name: 'Import manual', exact: true }).click()
+  await expect(dialog).not.toBeVisible()
+  await expect(page.getByRole('article')).toHaveCount(1)
+  await expect(page.getByRole('article')).toContainText('Safety & Compliance')
+  await expect(page.getByRole('article')).not.toContainText('Phone')
+
+  await page.getByRole('button', { name: 'Repair Manuals', exact: true }).click()
+  await expect(page.getByRole('article')).toHaveCount(1)
+  await expect(page.getByRole('article')).toContainText('repair-only')
+})
+
 test('metadata editing, cancellation, confirmed deletion and non-reused IDs', async ({ page }) => {
   await page.goto('/')
   await expect(page.getByRole('heading', { name: 'No manuals found' })).toBeVisible()

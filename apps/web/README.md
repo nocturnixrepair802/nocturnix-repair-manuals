@@ -3,6 +3,17 @@
 Personal browser-based repair manual library built with React, TypeScript, and
 Vite. The library stores manuals in browser IndexedDB.
 
+## Library sections
+
+- **Repair Manuals** keeps device type, manufacturer, model, and document-category
+  organization.
+- **Policies, Procedures, & Operations** includes Policy Manuals, Standard
+  Operating Procedures, Safety & Compliance, Repair Operations, Customer
+  Service, Inventory & Purchasing, Finance & Administration, and Forms &
+  Templates.
+- Each policy PDF is saved under its selected subsection and remains separate
+  from the repair-manual view. Existing manuals remain in Repair Manuals.
+
 ## Run locally
 
 ```powershell
@@ -21,9 +32,9 @@ npm run preview
 ## Publish to GitHub Pages
 
 The workflow at `.github/workflows/deploy-pages.yml` builds and deploys this PWA
-when changes are pushed to `development/manual-library-v0.3`. In the repository
-on GitHub, set **Settings → Pages → Build and deployment → Source** to **GitHub
-Actions**. After a successful workflow run, the app is available at:
+when changes are pushed to `main` or `development/manual-library-v0.3`. In the
+repository on GitHub, set **Settings → Pages → Build and deployment → Source**
+to **GitHub Actions**. After a successful workflow run, the app is available at:
 
 `https://nocturnixrepair802.github.io/nocturnix-repair-manuals/`
 
@@ -37,10 +48,10 @@ Never commit repair PDFs, private library backups, or secrets to the repository.
 ## Pull request checks and deployment troubleshooting
 
 Pull requests into `main` run lint, database/migration tests, and a production
-build. They do not publish a preview site. Pushes to
+build. They do not publish a preview site. Pushes to `main` and
 `development/manual-library-v0.3` run the same checks and then deploy. A manual
-workflow run deploys only when that development branch is selected. Pull request
-checks and branch deployments have separate concurrency groups.
+workflow run deploys only when `main` or the development branch is selected.
+Pull request checks and branch deployments have separate concurrency groups.
 
 If the build passes but deployment fails with `Failed to create deployment
 (status: 404)`, check repository Settings > Pages. Enable Pages and select

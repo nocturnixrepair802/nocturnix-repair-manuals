@@ -25,6 +25,7 @@ button { cursor: pointer; }
   border-right: 1px solid #203451;
   display: flex;
   flex-direction: column;
+  overflow-y: auto;
 }
 
 .brand {
@@ -45,6 +46,10 @@ button { cursor: pointer; }
 .brand span { font-size: 11px; color: #00dab7; letter-spacing: 1px; }
 
 .navigation { display: grid; gap: 10px; }
+.library-sections { margin-bottom: 20px; }
+.subsection-navigation { gap: 5px; }
+.subsection-navigation button { justify-content: space-between; font-size: 13px; padding: 11px 12px; }
+.nav-count { color: #8ca4bc; font-size: 12px; }
 
 .navigation button {
   background: transparent;
@@ -280,6 +285,8 @@ a { color: #00dab7; }
   .sidebar { width: 100%; padding: 15px; }
   .brand { margin-bottom: 15px; }
   .navigation { display: flex; overflow-x: auto; }
+  .library-sections { margin-bottom: 8px; }
+  .subsection-navigation { padding-bottom: 8px; }
   .navigation button { white-space: nowrap; }
   .sidebar-footer { display: none; }
   .page-header { flex-direction: column; align-items: flex-start; }

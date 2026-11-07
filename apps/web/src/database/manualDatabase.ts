@@ -6,18 +6,33 @@ export const DOCUMENT_CATEGORIES = [
   'Unassigned', 'Service Manual', 'Repair Guide', 'Schematic',
   'Boardview', 'Parts Catalog', 'Other',
 ] as const
+export const LIBRARY_SECTIONS = ['Repair Manuals', 'Policies, Procedures, & Operations'] as const
+export const POLICY_SECTIONS = [
+  'Policy Manuals',
+  'Standard Operating Procedures',
+  'Safety & Compliance',
+  'Repair Operations',
+  'Customer Service',
+  'Inventory & Purchasing',
+  'Finance & Administration',
+  'Forms & Templates',
+] as const
 
 export type DeviceType = typeof DEVICE_TYPES[number]
 export type Manufacturer = typeof MANUFACTURERS[number]
 export type DocumentCategory = typeof DOCUMENT_CATEGORIES[number]
+export type LibrarySection = typeof LIBRARY_SECTIONS[number]
+export type PolicySection = typeof POLICY_SECTIONS[number]
 
 export interface ManualMetadata {
   title: string
-  manufacturer: Manufacturer
-  deviceType: DeviceType
+  librarySection: LibrarySection
+  policySection: PolicySection | ''
+  manufacturer: Manufacturer | ''
+  deviceType: DeviceType | ''
   deviceModel: string
   deviceModelId: string
-  documentCategory: DocumentCategory
+  documentCategory: DocumentCategory | ''
 }
 
 export interface StoredManual extends ManualMetadata {
@@ -75,6 +90,19 @@ export class NocturnixManualDatabase extends Dexie {
         })
       }
       await transaction.table('counters').put({ key: 'manualId', lastValue: records.length })
+    })
+    this.version(3).stores({
+      manuals: `${V1_SCHEMA}, &manualId, deviceModel, deviceModelId, documentCategory, fileHash, librarySection, policySection`,
+      counters: 'key',
+    }).upgrade(async (transaction) => {
+      const table = transaction.table<StoredManual, string>('manuals')
+      const records = await table.toArray()
+      for (const record of records) {
+        await table.update(record.id, {
+          librarySection: record.librarySection ?? 'Repair Manuals',
+          policySection: record.policySection ?? '',
+        })
+      }
     })
   }
 }

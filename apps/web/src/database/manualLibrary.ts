@@ -1,11 +1,13 @@
 import {
-  db, DEVICE_TYPES, DOCUMENT_CATEGORIES, MANUFACTURERS, formatManualId,
+  db, DEVICE_TYPES, DOCUMENT_CATEGORIES, LIBRARY_SECTIONS, MANUFACTURERS, POLICY_SECTIONS, formatManualId,
   type ManualMetadata, type NocturnixManualDatabase, type StoredManual,
 } from './manualDatabase'
 
 export function validateMetadata(input: ManualMetadata): ManualMetadata {
   const metadata = {
     title: input.title.trim(),
+    librarySection: input.librarySection,
+    policySection: input.policySection,
     manufacturer: input.manufacturer,
     deviceType: input.deviceType,
     deviceModel: input.deviceModel.trim(),
@@ -15,15 +17,31 @@ export function validateMetadata(input: ManualMetadata): ManualMetadata {
   if (!metadata.title || metadata.title.length > 200) {
     throw new Error('Enter a title of 1–200 characters.')
   }
-  if (!MANUFACTURERS.includes(metadata.manufacturer) ||
-      !DEVICE_TYPES.includes(metadata.deviceType) ||
-      !DOCUMENT_CATEGORIES.includes(metadata.documentCategory)) {
+  if (!LIBRARY_SECTIONS.includes(metadata.librarySection)) {
+    throw new Error('Select a valid library section.')
+  }
+  if (metadata.librarySection === 'Policies, Procedures, & Operations') {
+    if (!POLICY_SECTIONS.includes(metadata.policySection as typeof POLICY_SECTIONS[number])) {
+      throw new Error('Select a valid policy subsection.')
+    }
+    return {
+      ...metadata,
+      manufacturer: '',
+      deviceType: '',
+      deviceModel: '',
+      deviceModelId: '',
+      documentCategory: '',
+    }
+  }
+  if (!MANUFACTURERS.includes(metadata.manufacturer as typeof MANUFACTURERS[number]) ||
+      !DEVICE_TYPES.includes(metadata.deviceType as typeof DEVICE_TYPES[number]) ||
+      !DOCUMENT_CATEGORIES.includes(metadata.documentCategory as typeof DOCUMENT_CATEGORIES[number])) {
     throw new Error('Select valid manufacturer, device type, and category values.')
   }
   if (metadata.deviceModel.length > 120 || metadata.deviceModelId.length > 120) {
     throw new Error('Model fields must be 120 characters or fewer.')
   }
-  return metadata
+  return { ...metadata, policySection: '' }
 }
 
 export async function hashFile(file: Blob) {

@@ -8,6 +8,7 @@ import { createLegacyBackup, hasLegacyLibrary, restoreLegacyBackup } from './lib
 const opened: Dexie[] = []
 const names: string[] = []
 const metadata: ManualMetadata = {
+  librarySection: 'Repair Manuals', policySection: '',
   title: 'Test guide', manufacturer: 'Apple', deviceType: 'Phone',
   deviceModel: 'iPhone 14', deviceModelId: 'A2649', documentCategory: 'Repair Guide',
 }
@@ -40,18 +41,49 @@ afterEach(async () => {
   for (const databaseName of names.splice(0)) await Dexie.delete(databaseName)
 })
 
-describe('v1 to v2 migration', () => {
+describe('legacy library migration', () => {
+  it('migrates existing v2 manuals into the repair section without changing their content', async () => {
+    const { databaseName, records } = await seedLegacy()
+    const v2 = new Dexie(databaseName)
+    opened.push(v2)
+    v2.version(1).stores({ manuals: V1_SCHEMA })
+    v2.version(2).stores({
+      manuals: `${V1_SCHEMA}, &manualId, deviceModel, deviceModelId, documentCategory, fileHash`,
+      counters: 'key',
+    })
+    await v2.open()
+    await v2.table('manuals').update('a', {
+      manualId: 'NMR-MAN-000001', deviceModel: '', deviceModelId: '',
+      documentCategory: 'Repair Guide', updatedAt: records[2].importedAt,
+    })
+    await v2.table('counters').put({ key: 'manualId', lastValue: 3 })
+    v2.close()
+
+    const upgraded = database(databaseName)
+    await upgraded.open()
+    const saved = (await upgraded.manuals.get('a'))!
+    expect(upgraded.verno).toBe(3)
+    expect(saved).toMatchObject({
+      librarySection: 'Repair Manuals', policySection: '',
+      documentCategory: 'Repair Guide', manualId: 'NMR-MAN-000001',
+    })
+    expect(await saved.file.arrayBuffer()).toEqual(await records[2].file.arrayBuffer())
+  })
+
   it('preserves every old field, key and PDF byte while assigning deterministic IDs', async () => {
     const { databaseName, records } = await seedLegacy()
     const upgraded = database(databaseName)
     await upgraded.open()
-    expect(upgraded.verno).toBe(2)
+    expect(upgraded.verno).toBe(3)
     for (const original of records) {
       const saved = (await upgraded.manuals.get(original.id))!
       const { file: originalFile, ...originalMetadata } = original
       expect(saved).toMatchObject(originalMetadata)
       expect(await saved.file.arrayBuffer()).toEqual(await originalFile.arrayBuffer())
-      expect(saved).toMatchObject({ deviceModel: '', deviceModelId: '', documentCategory: 'Unassigned', updatedAt: original.importedAt })
+      expect(saved).toMatchObject({
+        deviceModel: '', deviceModelId: '', documentCategory: 'Unassigned',
+        librarySection: 'Repair Manuals', policySection: '', updatedAt: original.importedAt,
+      })
       expect(saved.fileHash).toBeUndefined()
     }
     expect((await upgraded.manuals.get('a'))!.manualId).toBe('NMR-MAN-000001')
@@ -113,6 +145,23 @@ describe('v1 to v2 migration', () => {
 })
 
 describe('library operations', () => {
+  it('imports policies into their own subsection without repair-device metadata', async () => {
+    const store = database()
+    const policy = await importManual(pdf('policy'), {
+      ...metadata,
+      title: 'Safety policy',
+      librarySection: 'Policies, Procedures, & Operations',
+      policySection: 'Safety & Compliance',
+    }, store)
+    const repair = await importManual(pdf('repair'), metadata, store)
+    expect(policy.manual).toMatchObject({
+      librarySection: 'Policies, Procedures, & Operations',
+      policySection: 'Safety & Compliance',
+      manufacturer: '', deviceType: '', documentCategory: '',
+    })
+    expect(repair.manual).toMatchObject({ librarySection: 'Repair Manuals', policySection: '' })
+  })
+
   it('serializes IDs and duplicate checks across independent connections', async () => {
     const first = database()
     const second = database(first.name)
