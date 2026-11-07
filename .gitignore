@@ -147,3 +147,64 @@ vite.config.ts.timestamp-*
 
 # Turbo Repo
 .turbo
+
+# NOCTURNIX REPAIR MANUALS PROTECTION
+
+# Proprietary manuals and reference libraries
+*.pdf
+*.zim
+*.epub
+*.mobi
+
+# Archives and installers
+*.zip
+*.7z
+*.rar
+*.exe
+*.msi
+
+# Local databases
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+*.sqlite-wal
+*.sqlite-shm
+
+# Python development
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Application build output
+dist/
+build/
+coverage/
+
+# Local data and backups
+storage/
+backups/
+imports/
+exports/
+
+# Credentials and certificates
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Local system files
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+
+# Historical application backups
+apps/web/src/App.v0.1.backup.txt
