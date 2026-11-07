@@ -3,15 +3,14 @@
 ## Working repository
 
 - Git checkout: `D:\Development\nocturnix-repair-manuals-github`.
-- Branch: `development/manual-library-v0.3`.
+- Branch: `feature/policy-operations-library`, based on merged `main`.
 - Stable baseline: `694a1da`, annotated tag `v0.2.0`.
 - `D:\Development\Nocturnix Repair Manuals` is a separate original workspace without Git metadata. Its original application and checkpoint are untouched.
-- The v0.3 changes are uncommitted. No push or release has been performed.
-- Do not modify `main`, replace `v0.2.0`, or commit private manuals, databases, backup downloads, or secrets.
+- Policy/operations additions are uncommitted. Do not replace `v0.2.0` or commit private manuals, databases, backup downloads, or secrets.
 
 ## Implemented scope
 
-The browser-local React/TypeScript frontend now supports immutable sequential display IDs (`NMR-MAN-000001`), manufacturer, device model, manufacturer DeviceModelID, document classification, metadata editing, confirmed deletion, and SHA-256 duplicate protection. The dashboard, sidebar, device navigation, statistics, PDF reader, and persistence remain.
+The browser-local React/TypeScript frontend supports immutable sequential display IDs (`NMR-MAN-000001`), manufacturer, device model, manufacturer DeviceModelID, document classification, metadata editing, confirmed deletion, and SHA-256 duplicate protection. It separates Repair Manuals from Policies, Procedures, & Operations, with eight policy subsections. A v3 database migration assigns existing records to Repair Manuals and preserves their PDFs and metadata.
 
 DeviceModelID means a manufacturer model identifier such as `A2649` or `SM-S901B`, not a separately allocated model catalog key. Manufacturers remain Apple, Samsung, and Unassigned. Categories are Unassigned, Service Manual, Repair Guide, Schematic, Boardview, Parts Catalog, and Other. Model fields may be empty; classifications must use valid options; a trimmed title is required.
 
@@ -23,13 +22,13 @@ The backend remains a Python project scaffold; there are no new API routes, serv
 
 Database: `NocturnixRepairManuals`. Preserve the existing `manuals` table and UUID `id` primary key. Retain the version 1 schema declaration.
 
-Dexie version 2 adds `manualId`, `deviceModel`, `deviceModelId`, `documentCategory`, `updatedAt`, and optional `fileHash`. `manualId` has a unique index; `fileHash` has a non-unique index so legacy duplicate PDFs remain intact. A `counters` table keyed by `key` stores `manualId`'s last allocated integer.
+Dexie version 2 adds `manualId`, `deviceModel`, `deviceModelId`, `documentCategory`, `updatedAt`, and optional `fileHash`. Version 3 adds `librarySection` and `policySection`, defaulting existing records to Repair Manuals. `manualId` has a unique index; `fileHash` has a non-unique index so legacy duplicate PDFs remain intact. A `counters` table keyed by `key` stores `manualId`'s last allocated integer.
 
 Upgrade behavior:
 
 1. Existing v1 libraries pause at a backup screen before Dexie opens the database for upgrade. Close all other library tabs before proceeding.
 2. Download the JSON backup to a private location outside the repository and confirm that it was saved. The backup contains all original metadata and base64-encoded PDF blobs; creation verifies every PDF's SHA-256 hash after decoding.
-3. The explicit Upgrade action runs the transactional v1-to-v2 metadata migration. Original keys, metadata, timestamps, duplicate records, and blobs remain unchanged.
+3. The explicit Upgrade action runs the transactional v1-to-v3 metadata migration. Original keys, metadata, timestamps, duplicate records, and blobs remain unchanged.
 4. Display IDs are assigned by original import timestamp, then UUID. Missing timestamps sort first; original missing metadata is not fabricated. New model fields are empty and classification is Unassigned.
 5. Hashes are filled after the schema transaction, one PDF at a time. Imports remain disabled until preparation succeeds. Failure shows an error and Retry; completed hashes persist, so retries resume missing work.
 
@@ -80,8 +79,8 @@ Playwright uses installed Microsoft Edge on Windows and bundled Chromium on othe
 Verified on 2026-11-07:
 
 - Baseline v0.2 production build and ESLint passed before changes.
-- 13 database tests: deterministic migration; preservation of original fields and PDF bytes; failed-upgrade rollback; partial hash resumption; missing legacy date; independent-connection concurrency; no ID reuse; failed-write rollback; metadata/file identity after reopen; input rejection; known SHA-256 digest; backup round-trip and refusal to overwrite; damaged backup rejection; and non-mutating empty-database inspection.
-- 6 Edge browser scenarios: baseline navigation/filter/search/import/reader/persistence; edit/cancel/delete/ID behavior; duplicate batches and invalid files; backup gate/migration/recovery; cross-tab updates; mobile layout and keyboard cancellation.
+- 15 database tests, including v1/v2-to-v3 migration preservation and policy-section imports.
+- 7 Edge browser scenarios, including keeping policy documents separate from repair manuals.
 - Production build and ESLint passed with the new code.
 - Dependency installation reported 10 moderate advisories in the development dependency tree, also present at baseline. `npm audit --omit=dev` reported zero production dependency vulnerabilities. No forced dependency upgrades were applied.
 

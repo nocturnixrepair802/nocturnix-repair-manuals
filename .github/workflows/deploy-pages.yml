@@ -3,6 +3,7 @@ name: Deploy Nocturnix Repair Manuals
 on:
   push:
     branches:
+      - main
       - development/manual-library-v0.3
   pull_request:
     branches:
@@ -50,14 +51,14 @@ jobs:
         run: npm run build
 
       - name: Upload Pages artifact
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/development/manual-library-v0.3'
+        if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/development/manual-library-v0.3')
         uses: actions/upload-pages-artifact@v5
         with:
           path: apps/web/dist
 
   deploy:
     # Validate pull requests without publishing their code or requiring Pages setup.
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/development/manual-library-v0.3'
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/development/manual-library-v0.3')
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

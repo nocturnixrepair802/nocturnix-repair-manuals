@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { liveQuery } from 'dexie'
 import { BookOpen, FileText, FolderOpen, Search, Smartphone, Tablet, Watch, Upload } from 'lucide-react'
 import {
-  db, DEVICE_TYPES, MANUFACTURERS, DOCUMENT_CATEGORIES,
-  type StoredManual, type ManualMetadata,
+  db, DEVICE_TYPES, MANUFACTURERS, DOCUMENT_CATEGORIES, POLICY_SECTIONS,
+  type StoredManual, type ManualMetadata, type LibrarySection, type PolicySection,
 } from './database/manualDatabase'
 import { deleteManual, editManual, findLegacyDuplicates, importManual, prepareLibrary } from './database/manualLibrary'
 import { createLegacyBackup, downloadBackup, hasLegacyLibrary } from './database/libraryBackup'
@@ -27,6 +27,8 @@ function Library() {
   const [manufacturer, setManufacturer] = useState('All')
   const [deviceType, setDeviceType] = useState('All')
   const [category, setCategory] = useState('All')
+  const [librarySection, setLibrarySection] = useState<LibrarySection>('Repair Manuals')
+  const [policySection, setPolicySection] = useState<PolicySection | 'All'>('All')
   const [selectedManual, setSelectedManual] = useState<StoredManual | null>(null)
   const [editing, setEditing] = useState<StoredManual | null>(null)
   const [deleting, setDeleting] = useState<StoredManual | null>(null)
@@ -73,22 +75,36 @@ function Library() {
     const query = search.trim().toLowerCase()
     return manuals.filter((manual) => {
       const fields = [manual.title, manual.fileName, manual.manufacturer, manual.manualId,
-        manual.deviceModel, manual.deviceModelId, manual.documentCategory]
+        manual.deviceModel, manual.deviceModelId, manual.documentCategory,
+        manual.librarySection, manual.policySection]
       return fields.some((field) => (field ?? '').toLowerCase().includes(query)) &&
-        (manufacturer === 'All' || manual.manufacturer === manufacturer) &&
-        (deviceType === 'All' || manual.deviceType === deviceType) &&
-        (category === 'All' || manual.documentCategory === category)
+        manual.librarySection === librarySection &&
+        (librarySection === 'Policies, Procedures, & Operations'
+          ? policySection === 'All' || manual.policySection === policySection
+          : (manufacturer === 'All' || manual.manufacturer === manufacturer) &&
+            (deviceType === 'All' || manual.deviceType === deviceType) &&
+            (category === 'All' || manual.documentCategory === category))
     }).sort((a, b) => a.manualId.localeCompare(b.manualId, undefined, { numeric: true }))
-  }, [manuals, search, manufacturer, deviceType, category])
+  }, [manuals, search, manufacturer, deviceType, category, librarySection, policySection])
 
   const duplicateGroups = useMemo(() => findLegacyDuplicates(manuals), [manuals])
   const currentFile = queue[0]
   const importDefaults: ManualMetadata | null = currentFile ? {
     title: currentFile.name.replace(/\.pdf$/i, '').slice(0, 200) || 'Untitled manual',
-    manufacturer: MANUFACTURERS.find((value) => value === manufacturer) ?? 'Unassigned',
-    deviceType: DEVICE_TYPES.find((value) => value === deviceType) ?? 'Phone',
+    librarySection,
+    policySection: librarySection === 'Policies, Procedures, & Operations'
+      ? policySection === 'All' ? POLICY_SECTIONS[0] : policySection
+      : '',
+    manufacturer: librarySection === 'Repair Manuals'
+      ? MANUFACTURERS.find((value) => value === manufacturer) ?? 'Unassigned'
+      : '',
+    deviceType: librarySection === 'Repair Manuals'
+      ? DEVICE_TYPES.find((value) => value === deviceType) ?? 'Phone'
+      : '',
     deviceModel: '', deviceModelId: '',
-    documentCategory: DOCUMENT_CATEGORIES.find((value) => value === category) ?? 'Unassigned',
+    documentCategory: librarySection === 'Repair Manuals'
+      ? DOCUMENT_CATEGORIES.find((value) => value === category) ?? 'Unassigned'
+      : '',
   } : null
 
   function skipImport() {
@@ -103,8 +119,16 @@ function Library() {
           <div className="brand-icon"><BookOpen size={28} /></div>
           <div><strong>NOCTURNIX</strong><span>REPAIR MANUALS</span></div>
         </div>
-        <nav className="navigation" aria-label="Manual categories">
-          {[
+        <nav className="navigation library-sections" aria-label="Library sections">
+          <button type="button" aria-pressed={librarySection === 'Repair Manuals'} onClick={() => {
+            setLibrarySection('Repair Manuals'); setDeviceType('All'); setManufacturer('All'); setCategory('All')
+          }}><BookOpen size={19} />Repair Manuals</button>
+          <button type="button" aria-pressed={librarySection === 'Policies, Procedures, & Operations'} onClick={() => {
+            setLibrarySection('Policies, Procedures, & Operations'); setPolicySection('All')
+          }}><FolderOpen size={19} />Policies, Procedures, & Operations</button>
+        </nav>
+        <nav className="navigation subsection-navigation" aria-label={librarySection === 'Repair Manuals' ? 'Device types' : 'Policy subsections'}>
+          {librarySection === 'Repair Manuals' ? [
             { value: 'All', label: 'All Manuals', Icon: FolderOpen },
             { value: 'Phone', label: 'Phones', Icon: Smartphone },
             { value: 'Tablet', label: 'Tablets', Icon: Tablet },
@@ -113,7 +137,18 @@ function Library() {
             <button key={value} type="button" aria-pressed={deviceType === value} onClick={() => setDeviceType(value)}>
               <Icon size={19} />{label}
             </button>
-          ))}
+          )) : (
+            <>
+              <button type="button" aria-pressed={policySection === 'All'} onClick={() => setPolicySection('All')}>
+                All Policy Documents <span className="nav-count">{manuals.filter((manual) => manual.librarySection === librarySection).length}</span>
+              </button>
+              {POLICY_SECTIONS.map((section) => (
+                <button key={section} type="button" aria-pressed={policySection === section} onClick={() => setPolicySection(section)}>
+                  {section}<span className="nav-count">{manuals.filter((manual) => manual.librarySection === librarySection && manual.policySection === section).length}</span>
+                </button>
+              ))}
+            </>
+          )}
         </nav>
         <div className="sidebar-footer">NMR Technical Library<span>Development Version 0.3</span></div>
       </aside>
@@ -121,8 +156,10 @@ function Library() {
         <header className="page-header">
           <div>
             <p className="eyebrow">TECHNICAL REFERENCE LIBRARY</p>
-            <h1>Repair Manuals</h1>
-            <p>Search, organize, and view your repair documentation.</p>
+            <h1>{librarySection}</h1>
+            <p>{librarySection === 'Repair Manuals'
+              ? 'Search, organize, and view your repair documentation.'
+              : 'Organize your policies, procedures, and business operations documents.'}</p>
           </div>
           <label className={`upload-button ${stage !== 'ready' || queue.length ? 'disabled' : ''}`}>
             <Upload size={18} />Import PDF
@@ -162,16 +199,18 @@ function Library() {
         )}
         <section className="library-panel">
           <div className="library-toolbar">
-            <div className="search-box"><Search size={18} /><input type="search" placeholder="Search repair manuals..." aria-label="Search repair manuals" value={search} onChange={(event) => setSearch(event.target.value)} /></div>
-            <select aria-label="Filter by manufacturer" value={manufacturer} onChange={(event) => setManufacturer(event.target.value)}>
-              <option value="All">All Manufacturers</option>{MANUFACTURERS.map((value) => <option key={value}>{value}</option>)}
-            </select>
-            <select aria-label="Filter by device type" value={deviceType} onChange={(event) => setDeviceType(event.target.value)}>
-              <option value="All">All Device Types</option>{DEVICE_TYPES.map((value) => <option key={value}>{value}</option>)}
-            </select>
-            <select aria-label="Filter by document category" value={category} onChange={(event) => setCategory(event.target.value)}>
-              <option value="All">All Document Categories</option>{DOCUMENT_CATEGORIES.map((value) => <option key={value}>{value}</option>)}
-            </select>
+            <div className="search-box"><Search size={18} /><input type="search" placeholder={librarySection === 'Repair Manuals' ? 'Search repair manuals...' : 'Search policy documents...'} aria-label={`Search ${librarySection}`} value={search} onChange={(event) => setSearch(event.target.value)} /></div>
+            {librarySection === 'Repair Manuals' && <>
+              <select aria-label="Filter by manufacturer" value={manufacturer} onChange={(event) => setManufacturer(event.target.value)}>
+                <option value="All">All Manufacturers</option>{MANUFACTURERS.map((value) => <option key={value}>{value}</option>)}
+              </select>
+              <select aria-label="Filter by device type" value={deviceType} onChange={(event) => setDeviceType(event.target.value)}>
+                <option value="All">All Device Types</option>{DEVICE_TYPES.map((value) => <option key={value}>{value}</option>)}
+              </select>
+              <select aria-label="Filter by document category" value={category} onChange={(event) => setCategory(event.target.value)}>
+                <option value="All">All Document Categories</option>{DOCUMENT_CATEGORIES.map((value) => <option key={value}>{value}</option>)}
+              </select>
+            </>}
           </div>
           {error && <p role="alert" className="error">{error}</p>}
           {stage === 'error' && <button onClick={() => window.location.reload()}>Retry library setup</button>}
@@ -184,7 +223,9 @@ function Library() {
             </details>
           )}
           {(stage === 'checking' || stage === 'loading') && <div className="empty-state" role="status"><BookOpen size={40} /><h2>Preparing library…</h2><p>{progress || 'Checking saved repair manuals.'}</p></div>}
-          {stage === 'ready' && filteredManuals.length === 0 && <div className="empty-state"><BookOpen size={48} /><h2>No manuals found</h2><p>{manuals.length === 0 ? 'Import your first PDF repair manual to begin building the library.' : 'No manuals match your current search or filters.'}</p></div>}
+          {stage === 'ready' && filteredManuals.length === 0 && <div className="empty-state"><BookOpen size={48} /><h2>{librarySection === 'Repair Manuals' ? 'No manuals found' : 'No policy documents found'}</h2><p>{manuals.filter((manual) => manual.librarySection === librarySection).length === 0
+            ? librarySection === 'Repair Manuals' ? 'Import your first PDF repair manual to begin building the library.' : 'Import a policy or operations PDF to begin this library section.'
+            : 'No documents match your current search or filters.'}</p></div>}
           {stage === 'ready' && filteredManuals.length > 0 && <div className="manual-grid">
             {filteredManuals.map((manual) => <ManualCard key={manual.id} manual={manual} onOpen={() => setSelectedManual(manual)} onEdit={() => setEditing(manual)} onDelete={() => { setError(''); setDeleting(manual) }} />)}
           </div>}
