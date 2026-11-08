@@ -1,11 +1,12 @@
 [project]
 name = "manuals-api"
 version = "0.1.0"
-description = "Add your description here"
+description = "Local read-only catalog API for Nocturnix Technical Reference Library"
 readme = "README.md"
 requires-python = ">=3.15"
 dependencies = [
     "fastapi>=0.162.2",
+    "httpx>=0.28.1",
     "pydantic-settings>=2.16.2",
     "python-multipart>=0.0.33",
     "sqlalchemy>=2.1.8",
@@ -21,6 +22,5 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
-    "httpx>=0.28.1",
     "pytest>=9.2.0",
 ]

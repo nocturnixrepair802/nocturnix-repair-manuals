@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { liveQuery } from 'dexie'
-import { BookOpen, FileText, FolderOpen, Search, Smartphone, Tablet, Watch, Upload } from 'lucide-react'
+import { BookOpen, FileText, FolderOpen, Search, Smartphone, Tablet, Watch, Upload, Wrench } from 'lucide-react'
 import {
   db, DEVICE_TYPES, MANUFACTURERS, DOCUMENT_CATEGORIES, POLICY_SECTIONS,
   type StoredManual, type ManualMetadata, type LibrarySection, type PolicySection,
@@ -10,6 +10,7 @@ import { createLegacyBackup, downloadBackup, hasLegacyLibrary } from './database
 import { ManualCard } from './components/ManualCard'
 import { ManualForm } from './components/ManualForm'
 import { Modal } from './components/Modal'
+import { OfflineGuides } from './components/OfflineGuides'
 import { PdfReader } from './components/PdfReader'
 import { Recovery } from './components/Recovery'
 import './App.css'
@@ -28,6 +29,7 @@ function Library() {
   const [deviceType, setDeviceType] = useState('All')
   const [category, setCategory] = useState('All')
   const [librarySection, setLibrarySection] = useState<LibrarySection>('Repair Manuals')
+  const [activeView, setActiveView] = useState<LibrarySection | 'Offline Repair Guides'>('Repair Manuals')
   const [policySection, setPolicySection] = useState<PolicySection | 'All'>('All')
   const [selectedManual, setSelectedManual] = useState<StoredManual | null>(null)
   const [editing, setEditing] = useState<StoredManual | null>(null)
@@ -120,14 +122,17 @@ function Library() {
           <div><strong>NOCTURNIX</strong><span>MANUALS</span></div>
         </div>
         <nav className="navigation library-sections" aria-label="Library sections">
-          <button type="button" aria-pressed={librarySection === 'Repair Manuals'} onClick={() => {
-            setLibrarySection('Repair Manuals'); setDeviceType('All'); setManufacturer('All'); setCategory('All')
+          <button type="button" aria-pressed={activeView === 'Repair Manuals'} onClick={() => {
+            setActiveView('Repair Manuals'); setLibrarySection('Repair Manuals'); setDeviceType('All'); setManufacturer('All'); setCategory('All')
           }}><BookOpen size={19} />Repair Manuals</button>
-          <button type="button" aria-pressed={librarySection === 'Policies, Procedures, & Operations'} onClick={() => {
-            setLibrarySection('Policies, Procedures, & Operations'); setPolicySection('All')
+          <button type="button" aria-pressed={activeView === 'Offline Repair Guides'} onClick={() => {
+            setActiveView('Offline Repair Guides')
+          }}><Wrench size={19} />Offline Repair Guides</button>
+          <button type="button" aria-pressed={activeView === 'Policies, Procedures, & Operations'} onClick={() => {
+            setActiveView('Policies, Procedures, & Operations'); setLibrarySection('Policies, Procedures, & Operations'); setPolicySection('All')
           }}><FolderOpen size={19} />Policies, Procedures, & Operations</button>
         </nav>
-        <nav className="navigation subsection-navigation" aria-label={librarySection === 'Repair Manuals' ? 'Device types' : 'Policy subsections'}>
+        {activeView !== 'Offline Repair Guides' && <nav className="navigation subsection-navigation" aria-label={librarySection === 'Repair Manuals' ? 'Device types' : 'Policy subsections'}>
           {librarySection === 'Repair Manuals' ? [
             { value: 'All', label: 'All Manuals', Icon: FolderOpen },
             { value: 'Phone', label: 'Phones', Icon: Smartphone },
@@ -149,19 +154,21 @@ function Library() {
               ))}
             </>
           )}
-        </nav>
+        </nav>}
         <div className="sidebar-footer">NMR Technical Library<span>Development Version 0.3</span></div>
       </aside>
       <main className="main-content">
         <header className="page-header">
           <div>
             <p className="eyebrow">TECHNICAL REFERENCE LIBRARY</p>
-            <h1>{librarySection}</h1>
-            <p>{librarySection === 'Repair Manuals'
+            <h1>{activeView}</h1>
+            <p>{activeView === 'Offline Repair Guides'
+              ? 'Search the local iFixit catalog and open guides through Kiwix.'
+              : librarySection === 'Repair Manuals'
               ? 'Search, organize, and view your repair documentation.'
               : 'Organize your policies, procedures, and business operations documents.'}</p>
           </div>
-          <label className={`upload-button ${stage !== 'ready' || queue.length ? 'disabled' : ''}`}>
+          {activeView !== 'Offline Repair Guides' && <label className={`upload-button ${stage !== 'ready' || queue.length ? 'disabled' : ''}`}>
             <Upload size={18} />Import PDF
             <input aria-label="Import PDF" type="file" accept=".pdf,application/pdf" multiple hidden
               disabled={stage !== 'ready' || queue.length > 0}
@@ -170,9 +177,9 @@ function Library() {
                 event.target.value = ''
                 if (files.length) { setResults([]); setQueue(files); setError('') }
               }} />
-          </label>
+          </label>}
         </header>
-        <section className="stats" aria-label="Library statistics">
+        {activeView !== 'Offline Repair Guides' && <section className="stats" aria-label="Library statistics">
           {[
             { label: 'Total Manuals', count: manuals.length, Icon: FileText },
             { label: 'Phone Manuals', count: manuals.filter((manual) => manual.deviceType === 'Phone').length, Icon: Smartphone },
@@ -181,8 +188,8 @@ function Library() {
           ].map(({ label, count, Icon }) => (
             <div className="stat-card" key={label}><Icon /><div><strong>{count}</strong><span>{label}</span></div></div>
           ))}
-        </section>
-        {stage === 'backup' && (
+        </section>}
+        {activeView !== 'Offline Repair Guides' && stage === 'backup' && (
           <section className="library-panel upgrade-panel" aria-label="Upgrade library">
             <h2>Back up your library before upgrading</h2>
             <p>Your existing manuals will be preserved. Close other library tabs, download the backup, and confirm that it is saved before upgrading to v0.3.</p>
@@ -197,7 +204,7 @@ function Library() {
             <button className="primary" disabled={!backupConfirmed || busy} onClick={() => { void initialize() }}>Upgrade library</button>
           </section>
         )}
-        <section className="library-panel">
+        {activeView === 'Offline Repair Guides' ? <OfflineGuides /> : <section className="library-panel">
           <div className="library-toolbar">
             <div className="search-box"><Search size={18} /><input type="search" placeholder={librarySection === 'Repair Manuals' ? 'Search repair manuals...' : 'Search policy documents...'} aria-label={`Search ${librarySection}`} value={search} onChange={(event) => setSearch(event.target.value)} /></div>
             {librarySection === 'Repair Manuals' && <>
@@ -229,7 +236,7 @@ function Library() {
           {stage === 'ready' && filteredManuals.length > 0 && <div className="manual-grid">
             {filteredManuals.map((manual) => <ManualCard key={manual.id} manual={manual} onOpen={() => setSelectedManual(manual)} onEdit={() => setEditing(manual)} onDelete={() => { setError(''); setDeleting(manual) }} />)}
           </div>}
-        </section>
+        </section>}
       </main>
       {selectedManual && <PdfReader manual={selectedManual} onClose={() => setSelectedManual(null)} />}
       {editing && <Modal title={`Edit ${editing.manualId}`} onClose={() => { if (!busy) setEditing(null) }} busy={busy}>

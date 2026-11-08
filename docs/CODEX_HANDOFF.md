@@ -3,10 +3,10 @@
 ## Working repository
 
 - Git checkout: `D:\Development\nocturnix-repair-manuals-github`.
-- Branch: `feature/policy-operations-library`, based on merged `main`.
+- Branch: `feature/offline-ifixit-integration`, based on merged `main`.
 - Stable baseline: `694a1da`, annotated tag `v0.2.0`.
 - `D:\Development\Nocturnix Repair Manuals` is a separate original workspace without Git metadata. Its original application and checkpoint are untouched.
-- Policy/operations additions are uncommitted. Do not replace `v0.2.0` or commit private manuals, databases, backup downloads, or secrets.
+- Offline iFixit integration is an uncommitted review milestone. Do not replace `v0.2.0` or commit private manuals, databases, ZIM archives, backup downloads, or secrets.
 
 ## Implemented scope
 
@@ -16,7 +16,9 @@ DeviceModelID means a manufacturer model identifier such as `A2649` or `SM-S901B
 
 Selected import files are reviewed individually. Cancel skips the current file. Each file commits independently; duplicate files do not receive new IDs. Results identify imported, duplicate, failed, and skipped files. A filename or MIME declaration alone is insufficient: new imports must contain a PDF header within the first 1024 bytes. This is a format sanity check, not a complete PDF parser or security scanner.
 
-The backend remains a Python project scaffold; there are no new API routes, server storage, native iPad features, or synchronization. React Router and PDF.js remain installed, but navigation uses state and the reader uses an iframe with a blob URL.
+The Python service exposes a localhost-only, read-only API for the existing iFixit SQLite catalog. It opens the database with SQLite `mode=ro` and `PRAGMA query_only=ON`, provides bounded search, facets, pagination, and Kiwix status, and never copies catalog or guide content into the repository or browser database. There is no server storage, native iPad feature, or synchronization. React Router and PDF.js remain installed, but navigation uses state and the PDF reader uses an iframe with a blob URL.
+
+Offline Repair Guides is a separate navigation view. It does not add a Dexie table or schema version and does not treat `Auto-Classified` metadata as verified. Viewer URLs preserve the catalog's encoded `archive_path` exactly and use the configured archive identifier. The local API and Kiwix remain on Windows loopback addresses; GitHub Pages, iPads, and other computers may be unable to reach them and receive an explanatory message.
 
 ## Database and migration
 
@@ -60,7 +62,10 @@ Backup download names are ignored by Git in addition to existing backup/storage 
 - `apps/web/src/database/manualLibrary.ts`: validation, hashing, preparation, transactional import, edit, delete, duplicate grouping.
 - `apps/web/src/database/libraryBackup.ts`: non-upgrading v1 detection, checked backup, and non-overwriting restoration.
 - `apps/web/src/App.tsx`: dashboard state, backup gate, live library query, filters, import queue, and operation dialogs.
+- `apps/web/src/offlineGuides.ts`: localhost API client, types, filter query construction.
+- `apps/web/src/components/OfflineGuides.tsx`: offline catalog search, filters, status, pagination, and availability messages.
 - `apps/web/src/components`: manual cards/forms, shared modal, reader, and recovery screen.
+- `services/manuals-api/src/manuals_api`: read-only catalog queries, local settings, API routes, and Kiwix health checks.
 
 ## Verification
 
@@ -74,14 +79,21 @@ npm.cmd run lint
 npm.cmd run build
 ```
 
+Run from `services/manuals-api` with uv installed:
+
+```powershell
+uv run --frozen pytest
+```
+
 Playwright uses installed Microsoft Edge on Windows and bundled Chromium on other platforms. Override with `PLAYWRIGHT_CHANNEL` if needed. For bundled Chromium, install it using `npx playwright install chromium`. Browser checks start an isolated development server on `http://127.0.0.1:4175` and use temporary browser contexts; do not use that origin for a real library while running them. Test PDF files are generated in memory from original synthetic content, never loaded from private libraries. Generated reports and test artifacts are ignored.
 
-Verified on 2026-11-07:
+Verified on 2026-11-08:
 
 - Baseline v0.2 production build and ESLint passed before changes.
-- 15 database tests, including v1/v2-to-v3 migration preservation and policy-section imports.
-- 7 Edge browser scenarios, including keeping policy documents separate from repair manuals.
-- Production build and ESLint passed with the new code.
+- 18 frontend unit/database tests, including v1/v2-to-v3 migration preservation, policy-section imports, localhost API queries, and exact Kiwix URL preservation.
+- 10 FastAPI tests covering read-only SQLite behavior, bounded search/filtering, CORS, facets, URL construction, and unavailable Kiwix handling.
+- 10 Edge browser scenarios, including the unchanged PDF/policy flows, offline guide search/filtering, unavailable Kiwix, and an unreachable localhost API.
+- GitHub Pages production build and ESLint passed with the new code.
 - Dependency installation reported 10 moderate advisories in the development dependency tree, also present at baseline. `npm audit --omit=dev` reported zero production dependency vulnerabilities. No forced dependency upgrades were applied.
 
 The browser reader check verifies the iframe's PDF blob URL and MIME response. It does not assert native PDF viewer rendering across Safari/iPad browsers. Real storage exhaustion, multi-gigabyte libraries, and actual user data were not exercised.
