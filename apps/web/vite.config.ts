@@ -1,11 +1,14 @@
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
-import { defineConfig } from 'vite'
+import { configDefaults, defineConfig } from 'vitest/config'
 
 const basePath = process.env.VITE_BASE_PATH || '/'
 
 export default defineConfig({
   base: basePath,
+  test: {
+    exclude: [...configDefaults.exclude, '**/e2e/**'],
+  },
   plugins: [
     react(),
     VitePWA({

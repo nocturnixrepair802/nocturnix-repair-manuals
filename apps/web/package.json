@@ -6,9 +6,10 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:local": "tsc -b && vite build --base /",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "vitest run --exclude e2e/**",
+    "test": "vitest run",
     "test:e2e": "playwright test"
   },
   "dependencies": {
