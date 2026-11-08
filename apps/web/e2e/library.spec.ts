@@ -221,6 +221,114 @@ test('independent tabs receive live updates and share duplicate protection', asy
   await expect(page.getByRole('article')).toHaveCount(1)
 })
 
+test('offline guide catalog searches, filters, preserves attribution, and links to Kiwix', async ({ page }) => {
+  const verifiedUrl = 'http://127.0.0.1:8080/viewer#ifixit_en_all_2025-12/Guide/(New)+iPhone+15+Back+Glass+Installation/191628'
+  const guides = [
+    {
+      guide_id: '191628', title: '(New) iPhone 15 Back Glass Installation',
+      archive_path: 'Guide/(New)+iPhone+15+Back+Glass+Installation/191628',
+      manufacturer: 'Apple', device_family: 'iPhone', device_model: 'iPhone 15', repair_type: 'Back Glass',
+      source: 'iFixit', archive_version: '2025-12', classification_status: 'Auto-Classified', viewer_url: verifiedUrl,
+    },
+    {
+      guide_id: '100001', title: 'Samsung Galaxy Grand Prime Charging Port Replacement',
+      archive_path: 'Guide/Samsung+Galaxy+Grand+Prime+Charging+Port+Replacement/100001',
+      manufacturer: null, device_family: null, device_model: null, repair_type: 'Charging Port',
+      source: 'iFixit', archive_version: '2025-12', classification_status: 'Needs Review',
+      viewer_url: 'http://127.0.0.1:8080/viewer#ifixit_en_all_2025-12/Guide/Samsung+Galaxy+Grand+Prime+Charging+Port+Replacement/100001',
+    },
+  ]
+  await page.route('http://127.0.0.1:8765/api/offline-guides**', async (route) => {
+    const url = new URL(route.request().url())
+    const headers = { 'access-control-allow-origin': route.request().headers().origin, 'content-type': 'application/json' }
+    if (url.pathname.endsWith('/status')) {
+      await route.fulfill({ headers, json: {
+        catalog_available: true, catalog_message: 'Catalog available.', guide_count: 56536,
+        kiwix_available: true, kiwix_message: 'Kiwix available.',
+        kiwix_base_url: 'http://127.0.0.1:8080', archive_id: 'ifixit_en_all_2025-12',
+      } })
+      return
+    }
+    if (url.pathname.endsWith('/facets')) {
+      await route.fulfill({ headers, json: {
+        manufacturers: [{ value: 'Apple', label: 'Apple', count: 4330 }, { value: '__missing__', label: 'Unassigned', count: 50918 }],
+        device_models: [{ value: 'iPhone 15', label: 'iPhone 15', count: 42 }, { value: '__missing__', label: 'Unassigned', count: 50918 }],
+        repair_types: [{ value: 'Back Glass', label: 'Back Glass', count: 69 }, { value: 'Charging Port', label: 'Charging Port', count: 422 }],
+        classification_statuses: [{ value: 'Auto-Classified', label: 'Auto-Classified', count: 5610 }, { value: 'Needs Review', label: 'Needs Review', count: 50926 }],
+      } })
+      return
+    }
+    const query = url.searchParams.get('query')?.toLowerCase()
+    const classification = url.searchParams.get('classification_status')
+    const items = guides.filter((guide) =>
+      (!query || guide.title.toLowerCase().includes(query)) &&
+      (!classification || guide.classification_status === classification))
+    await route.fulfill({ headers, json: { items, total: items.length, limit: 50, offset: 0 } })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Offline Repair Guides', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Offline Repair Guides' })).toBeVisible()
+  await expect(page.getByText('56,536 indexed guides')).toBeVisible()
+  await expect(page.getByRole('article')).toHaveCount(2)
+  await expect(page.getByRole('link', { name: 'Open in Kiwix' }).first()).toHaveAttribute('href', verifiedUrl)
+  await expect(page.getByText('Automatically classified metadata; verify it against the guide before relying on it.')).toBeVisible()
+  await expect(page.getByText('Metadata needs review and may be incomplete.')).toBeVisible()
+  await expect(page.getByText('Source: iFixit · Offline archive 2025-12').first()).toBeVisible()
+
+  const searchRequest = page.waitForRequest((request) => new URL(request.url()).searchParams.get('query') === 'iPhone 15')
+  await page.getByLabel('Search offline repair guides').fill('iPhone 15')
+  await page.getByRole('button', { name: 'Search', exact: true }).click()
+  await searchRequest
+  await expect(page.getByRole('article')).toHaveCount(1)
+  await page.getByLabel('Search offline repair guides').fill('')
+  await page.getByRole('button', { name: 'Search', exact: true }).click()
+  await expect(page.getByRole('article')).toHaveCount(2)
+  await page.getByLabel('Filter offline guides by classification').selectOption('Needs Review')
+  await expect(page.getByRole('article')).toHaveCount(1)
+  await expect(page.getByRole('article')).toContainText('Needs Review')
+  await expect(page.getByRole('article')).toContainText('Unassigned')
+})
+
+test('offline guides keep catalog search available when Kiwix is unavailable', async ({ page }) => {
+  await page.route('http://127.0.0.1:8765/api/offline-guides**', async (route) => {
+    const url = new URL(route.request().url())
+    const headers = { 'access-control-allow-origin': route.request().headers().origin, 'content-type': 'application/json' }
+    if (url.pathname.endsWith('/status')) {
+      await route.fulfill({ headers, json: {
+        catalog_available: true, catalog_message: 'Catalog available.', guide_count: 56536,
+        kiwix_available: false, kiwix_message: 'Kiwix is unavailable on this computer. Start the local Kiwix server and retry.',
+        kiwix_base_url: 'http://127.0.0.1:8080', archive_id: 'ifixit_en_all_2025-12',
+      } })
+    } else if (url.pathname.endsWith('/facets')) {
+      await route.fulfill({ headers, json: { manufacturers: [], device_models: [], repair_types: [], classification_statuses: [] } })
+    } else {
+      await route.fulfill({ headers, json: { items: [{
+        guide_id: '1', title: 'Offline test guide', archive_path: 'Guide/Offline+test+guide/1',
+        manufacturer: null, device_family: null, device_model: null, repair_type: null,
+        source: 'iFixit', archive_version: '2025-12', classification_status: 'Needs Review',
+        viewer_url: 'http://127.0.0.1:8080/viewer#ifixit_en_all_2025-12/Guide/Offline+test+guide/1',
+      }], total: 1, limit: 50, offset: 0 } })
+    }
+  })
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Offline Repair Guides', exact: true }).click()
+  await expect(page.getByText('Kiwix viewer unavailable')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Kiwix unavailable' })).toBeDisabled()
+  await expect(page.getByRole('article')).toHaveCount(1)
+})
+
+test('offline guide section handles an unreachable localhost API without breaking the PWA', async ({ page }) => {
+  await page.route('http://127.0.0.1:8765/api/offline-guides**', (route) => route.abort('connectionrefused'))
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Offline Repair Guides', exact: true }).click()
+  const alert = page.getByRole('alert')
+  await expect(alert).toContainText('Offline guide service unavailable')
+  await expect(alert).toContainText('local offline guide service could not be reached')
+  await expect(page.getByText('An iPad or another computer has a different localhost.')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Retry' })).toBeVisible()
+})
+
 test('phone viewport and keyboard dialog cancellation', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/')

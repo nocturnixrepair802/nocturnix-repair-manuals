@@ -32,6 +32,13 @@ jobs:
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
 
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.13.7"
+          enable-cache: true
+          cache-dependency-glob: services/manuals-api/uv.lock
+
       - name: Install dependencies
         working-directory: apps/web
         run: npm ci
@@ -43,6 +50,10 @@ jobs:
       - name: Test library and migrations
         working-directory: apps/web
         run: npm test
+
+      - name: Test offline guide API
+        working-directory: services/manuals-api
+        run: uv run --frozen pytest
 
       - name: Build PWA for GitHub Pages
         working-directory: apps/web

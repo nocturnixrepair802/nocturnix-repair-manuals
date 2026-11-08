@@ -7,6 +7,8 @@ Vite. The library stores manuals in browser IndexedDB.
 
 - **Repair Manuals** keeps device type, manufacturer, model, and document-category
   organization.
+- **Offline Repair Guides** searches the existing local iFixit metadata catalog
+  and opens guide pages through a separately running localhost Kiwix server.
 - **Policies, Procedures, & Operations** includes Policy Manuals, Standard
   Operating Procedures, Safety & Compliance, Repair Operations, Customer
   Service, Inventory & Purchasing, Finance & Administration, and Forms &
@@ -44,6 +46,19 @@ is local to each browser/device and does not sync. Use the app's backup and
 restore features to transfer a library between devices.
 
 Never commit repair PDFs, private library backups, or secrets to the repository.
+
+## Local offline guide service
+
+The Offline Repair Guides section uses the read-only FastAPI bridge in
+`services/manuals-api`. Configure that service through its local `.env`, start
+Kiwix on `127.0.0.1:8080`, and then run `uv run manuals-api` from the service
+directory. The frontend defaults to `http://127.0.0.1:8765`; a different local
+loopback origin can be set with `VITE_OFFLINE_GUIDES_API_URL`.
+
+The published GitHub Pages PWA contains no SQLite database, ZIM archive, PDFs,
+or extracted iFixit content. Browsers can block an HTTPS page from reaching a
+local HTTP service, and localhost on an iPad or another computer refers to that
+device. The app reports this condition without affecting imported PDF manuals.
 
 ## Pull request checks and deployment troubleshooting
 
