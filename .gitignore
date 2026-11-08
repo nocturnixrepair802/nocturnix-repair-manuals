@@ -213,3 +213,6 @@ apps/web/src/App.v0.1.backup.txt
 apps/web/test-results/
 apps/web/playwright-report/
 nocturnix-v1-backup-*.json
+
+# Local Windows launcher configuration
+scripts/windows/launcher.settings.local.psd1

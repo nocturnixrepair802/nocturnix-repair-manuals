@@ -24,3 +24,8 @@ Available endpoints:
 - `GET /api/offline-guides`
 
 Run backend tests with `uv run pytest`.
+
+For ordinary Windows use, the one-time initializer and lifecycle supervisor in
+[`scripts/windows/README.md`](../../scripts/windows/README.md) configure and
+start this API. The same Python environment also serves the prebuilt frontend;
+daily startup does not run `uv`, Node, npm, or Vite.

@@ -23,6 +23,11 @@ npm install
 npm run dev
 ```
 
+This is the development workflow. Windows daily operation uses the prebuilt
+ASGI frontend and PowerShell supervisor described in
+[`scripts/windows/README.md`](../../scripts/windows/README.md), preserving the
+same `http://127.0.0.1:5173` origin without invoking Node or Vite at startup.
+
 The development server is for local use. To test the installable app, build and
 preview the production version:
 
@@ -30,6 +35,9 @@ preview the production version:
 npm run build
 npm run preview
 ```
+
+`npm run build:local` produces the root-based build used by the Windows
+supervisor. The one-time initializer sets the loopback API URL for that build.
 
 ## Publish to GitHub Pages
 
